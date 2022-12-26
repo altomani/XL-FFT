@@ -1,0 +1,279 @@
+// Copyright (c) 2022 Andrea Altomani
+// Released under the MIT license. See the file `LICENSE`.
+
+
+/** Complex multiplication */
+CMULT = LAMBDA(z, w,
+    LET(
+        x, CHOOSECOLS(z, 1),
+        y, CHOOSECOLS(z, 2),
+        u, CHOOSECOLS(w, 1),
+        v, CHOOSECOLS(w, 2),
+        HSTACK(x * u - y * v, x * v + y * u)
+    )
+);
+
+/** Roots of unity */
+_ROOTOFUNITY = LAMBDA(k, n, HSTACK(COS(2 * PI() * k / n), SIN(2 * PI() * k / n)));
+
+/** Circular convolution */
+_CIRC_CONVOL = LAMBDA(z, n, w,
+    LET(
+        x, CHOOSECOLS(z, 1),
+        y, CHOOSECOLS(z, 2),
+        A, MAKEARRAY(n, n, LAMBDA(i, j, INDEX(CHOOSECOLS(w, 1), MOD((i - 1) * (j - 1), n) + 1))),
+        B, MAKEARRAY(n, n, LAMBDA(i, j, INDEX(CHOOSECOLS(w, 2), MOD((i - 1) * (j - 1), n) + 1))),
+        HSTACK(MMULT(A, x) - MMULT(B, y), MMULT(A, y) + MMULT(B, x))
+    )
+);
+
+/** Naive DFT */
+_DFT = LAMBDA(z, LET(n, ROWS(z), w, _ROOTOFUNITY(SEQUENCE(n, , 0, -1), n), _CIRC_CONVOL(z, n, w)));
+
+/** Naive inverse DFT */
+_IDFT = LAMBDA(z,
+    LET(n, ROWS(z), w, _ROOTOFUNITY(SEQUENCE(n, , 0, 1), n), _CIRC_CONVOL(z, n, w) / n)
+);
+
+/** Radix 2 Cooley-Tukey FFT  for n >= 2 */
+_RADIX2 = LAMBDA(z, n, w,
+    IF(
+        n = 2,
+        LET(u, CHOOSEROWS(z, 1), v, CHOOSEROWS(z, 2), VSTACK(u + v, u - v)),
+        LET(
+            s, SEQUENCE(n / 2),
+            // Even and odd defined according to 0-based index 
+            e, CHOOSEROWS(z, 2 * s - 1),
+            o, CHOOSEROWS(z, 2 * s),
+            w_next, CHOOSEROWS(w, SEQUENCE(n / 4, , 1, 2)),
+            u, _RADIX2(e, n / 2, w_next),
+            v, CMULT(w, _RADIX2(o, n / 2, w_next)),
+            VSTACK(u + v, u - v)
+        )
+    )
+);
+
+/** Bluestein algorithm for FFT for n >= 2 */
+_BLUESTEIN = LAMBDA(z, n, chirp,
+    LET(
+        next_pow2, ROUND(2 ^ (CEILING.MATH(LOG(n, 2) + 1)), 0),
+        w, _ROOTOFUNITY(SEQUENCE(next_pow2 / 2, , 0, -1), next_pow2),
+        a, VSTACK(CMULT(z, chirp * {1, -1}), SEQUENCE(next_pow2 - n, 2, 0, 0)),
+        b, VSTACK(
+            chirp,
+            SEQUENCE(next_pow2 - 2 * n + 1, 2, 0, 0),
+            CHOOSEROWS(chirp, SEQUENCE(n - 1, , n, -1))
+        ),
+        conv, _RADIX2(
+            CMULT(_RADIX2(a, next_pow2, w), _RADIX2(b, next_pow2, w)),
+            next_pow2,
+            w * {1, -1}
+        ) / next_pow2,
+        CMULT(TAKE(conv, n), chirp * {1, -1})
+    )
+);
+
+/** FFT */
+FFT = LAMBDA(z, [n],
+    LET(
+        m, ROWS(z),
+        size, IF(OR(ISOMITTED(n), n = 0), m, n),
+        zz, IF(size = m, z, IF(size < m, TAKE(z, size), VSTACK(z, SEQUENCE(size - m, 2, 0, 0)))),
+        _FFT(zz, size)
+    )
+);
+
+/** FFT implementation */
+_FFT = LAMBDA(z, n,
+    IF(
+        n = 1,
+        z,
+        IF(
+            POWER(2, FLOOR.MATH(LOG(n, 2))) <> n,
+            _BLUESTEIN(z, n, _ROOTOFUNITY(SEQUENCE(n, , 0) ^ 2, 2 * n)),
+            _RADIX2(z, n, _ROOTOFUNITY(SEQUENCE(n / 2, , 0, -1), n))
+        )
+    )
+);
+
+/** Inverse FFT */
+IFFT = LAMBDA(z, [n],
+    LET(
+        m, ROWS(z),
+        size, IF(OR(ISOMITTED(n), n = 0), m, n),
+        zz, IF(size = m, z, IF(size < m, TAKE(z, size), VSTACK(z, SEQUENCE(size - m, 2, 0, 0)))),
+        _IFFT(zz, size) / size
+    )
+);
+
+/** Inverse FFT implementation (not normalized) */
+_IFFT = LAMBDA(z, n,
+    IF(
+        n = 1,
+        z,
+        IF(
+            POWER(2, FLOOR.MATH(LOG(n, 2))) <> n,
+            _BLUESTEIN(z, n, _ROOTOFUNITY(SEQUENCE(n, , 0) ^ 2, 2 * n) * {1, -1}),
+            _RADIX2(z, n, _ROOTOFUNITY(SEQUENCE(n / 2, , 0, 1), n))
+        )
+    )
+);
+
+/** Real FFT implementation */
+_RFFT = LAMBDA(x, n,
+    IF(
+        n = 1,
+        x * {1, 0},
+        IF(
+            n = 2,
+            MMULT({1, 1; 1, -1}, x) * {1, 0},
+            IF(
+                POWER(2, FLOOR.MATH(LOG(n, 2))) = n,
+                LET(
+                    w, _ROOTOFUNITY(-SEQUENCE(n / 2 + 1, , 0), n),
+                    z, _RADIX2(WRAPROWS(x, 2), n / 2, CHOOSEROWS(w, SEQUENCE(n / 4, , 1, 2))),
+                    zz, VSTACK(z, TAKE(z, 1)),
+                    zr, CHOOSEROWS(zz, SEQUENCE(n / 2 + 1, , n / 2 + 1, -1)) * {1, -1},
+                    0.5 * (zz + zr) - CMULT(w, CMULT({0, 0.5}, zz - zr))
+                ),
+                IF(
+                    MOD(n, 2) = 0,
+                    TAKE(_FFT(x * {1, 0}, n), n / 2 + 1),
+                    TAKE(_FFT(x * {1, 0}, n), (n + 1) / 2)
+                )
+            )
+        )
+    )
+);
+
+/** Real FFT */
+RFFT = LAMBDA(x, [n],
+    LET(
+        m, ROWS(x),
+        size, IF(OR(ISOMITTED(n), n = 0), m, n),
+        xx, IF(size = m, x, IF(size < m, TAKE(x, size), VSTACK(x, SEQUENCE(size - m, 1, 0, 0)))),
+        _RFFT(xx, size)
+    )
+);
+
+/** Inverse real FFT implementation (not normalized) */
+_IRFFT = LAMBDA(z, n,
+    IF(
+        n = 1,
+        CHOOSECOLS(z, 1),
+        IF(
+            n = 2,
+            CHOOSECOLS(MMULT({1, 1; 1, -1}, z), 1),
+            IF(
+                POWER(2, FLOOR.MATH(LOG(n, 2))) = n,
+                LET(
+                    w, _ROOTOFUNITY(+SEQUENCE(n / 2, , 0), n),
+                    zr, CHOOSEROWS(z, SEQUENCE(n / 2, , n / 2 + 1, -1)) * {1, -1},
+                    zc, DROP(z, -1),
+                    TOCOL(
+                        _RADIX2(
+                            (zc + zr) + CMULT(w, CMULT({0, 1}, zc - zr)),
+                            n / 2,
+                            CHOOSEROWS(w, SEQUENCE(n / 4, , 1, 2))
+                        )
+                    )
+                ),
+                IF(
+                    MOD(n, 2) = 0,
+                    CHOOSECOLS(
+                        _IFFT(
+                            VSTACK(z, CHOOSEROWS(z, SEQUENCE(n / 2 - 1, , n / 2, -1)) * {1, -1}),
+                            n
+                        ),
+                        1
+                    ),
+                    CHOOSECOLS(
+                        _IFFT(
+                            VSTACK(
+                                z,
+                                CHOOSEROWS(z, SEQUENCE((n - 1) / 2, , (n + 1) / 2, -1)) * {1, -1}
+                            ),
+                            n
+                        ),
+                        1
+                    )
+                )
+            )
+        )
+    )
+);
+
+/** Inverse real FFT */
+IRFFT = LAMBDA(z, [n],
+    LET(
+        m, ROWS(z),
+        real_size, IF(OR(ISOMITTED(n), n = 0), 2 * (m - 1), n),
+        complex_size, QUOTIENT(real_size, 2) + 1,
+        zz, IF(
+            m = complex_size,
+            z,
+            IF(
+                complex_size < m,
+                TAKE(z, complex_size),
+                VSTACK(z, SEQUENCE(complex_size - m, 2, 0, 0))
+            )
+        ),
+        _IRFFT(zz, real_size) / real_size
+    )
+);
+
+/** Converts from DFT to DHT of a real input */
+DFT2DHT = LAMBDA(z, [n],
+    LET(
+        m, ROWS(z),
+        real_size, IF(OR(ISOMITTED(n), n = 0), 2 * (m - 1), n),
+        complex_size, QUOTIENT(real_size, 2) + 1,
+        zz, IF(
+            m = complex_size,
+            z,
+            IF(
+                complex_size < m,
+                TAKE(z, complex_size),
+                VSTACK(z, SEQUENCE(complex_size - m, 2, 0, 0))
+            )
+        ),
+        IF(
+            real_size = 1,
+            INDEX(zz, 1, 1),
+            IF(
+                real_size = 2,
+                MMULT(zz, {1; -1}),
+                VSTACK(
+                    MMULT(zz, {1; -1}),
+                    INDEX(MMULT(zz, {1; 1}), SEQUENCE(complex_size - 2, , complex_size - 1, -1))
+                )
+            )
+        )
+    )
+);
+
+/** Converts from DHT to DFT of a real input */
+DHT2DFT = LAMBDA(x, [n],
+    LET(
+        m, ROWS(x),
+        size, IF(OR(ISOMITTED(n), n = 0), m, n),
+        xx, IF(size = m, x, IF(size < m, TAKE(x, size), VSTACK(x, SEQUENCE(size - m, 1, 0, 0)))),
+        IF(
+            size = 1,
+            CHOOSE({1, 2}, xx, 0),
+            LET(
+                s, SEQUENCE(size / 2),
+                VSTACK(
+                    CHOOSE({1, 2}, INDEX(xx, 1), 0),
+                    (CHOOSE({1, 2}, 1, -1) * INDEX(xx, s + 1) + INDEX(xx, size + 1 - s)) / 2
+                )
+            )
+        )
+    )
+);
+
+// FHT(x) - Fast Hartley transform
+FHT = LAMBDA(x, DFT2DHT(RFFT(x)));
+
+// IFHT(x) - Inverse Fast Hartley transform
+IFHT = LAMBDA(x, IRFFT(DHT2DFT(x)));
