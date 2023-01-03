@@ -272,8 +272,8 @@ DHT2DFT = LAMBDA(x, [n],
     )
 );
 
-// FHT(x) - Fast Hartley transform
-FHT = LAMBDA(x, DFT2DHT(RFFT(x)));
+/** Fast Hartley transform */
+FHT = LAMBDA(x, [n], DFT2DHT(RFFT(x, n), n));
 
-// IFHT(x) - Inverse Fast Hartley transform
-IFHT = LAMBDA(x, IRFFT(DHT2DFT(x)));
+/** Inverse Fast Hartley transform */
+IFHT = LAMBDA(x, [n], IRFFT(DHT2DFT(x, n), n));
