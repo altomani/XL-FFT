@@ -7,10 +7,10 @@ Calculate real and complex Fourier transforms of one-dimensional arrays in Excel
 
 ## Installation
 
-The recommended installation method is Microsoft's [Advanced Formula Environment](https://www.microsoft.com/en-us/garage/profiles/advanced-formula-environment-a-microsoft-garage-project/) for Excel.
-Create a new module (the suggested name is `FFT`, but any name will work) and paste the contents of the file `XL-FFT.xlf`, or import directly from [this gist](https://gist.github.com/altomani/0b56cb0eac5a0b083620b8471fc76271).
+The recommended installation method is Microsoft's _Advanced Formula Environment_ for Excel (now part of [Excel Labs](https://www.microsoft.com/en-us/garage/profiles/excel-labs/)).
+Create a new module (the suggested name is `FFT`, but any name will work) and paste the contents of the file `XL-FFT.xlf` in the text area, or import a new module directly from [this gist](https://gist.github.com/altomani/0b56cb0eac5a0b083620b8471fc76271).
 
-Alternatively, it is also possible to copy the individual definition of `LAMBDA` formulas into the Excel Name manager, after removing all comments (and the trailing semicolon).
+Alternatively, it is also possible to copy the individual definition of `LAMBDA` formulas into the Excel Name manager, after removing all comments (and the trailing semicolons).
 
 
 ## Usage
@@ -24,7 +24,7 @@ The Fourier Transform operates on real and complex vectors. Complex numbers are 
 ```
 
 
-Vectors are always column vectors. E.g. a real vector `(x_1, x_2)` is represented as:
+Vectors are always column vectors. For example a real vector `(x_1, x_2)` is represented as:
 
 ```
   |  A  |
